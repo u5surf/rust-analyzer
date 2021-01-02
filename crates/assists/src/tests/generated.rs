@@ -543,7 +543,11 @@ fn main() {
         r#####"
 fn add(a: u32, b: u32) -> u32 { a + b }
 fn main() {
-    let x = { let a = 1; let b = 2; a + b };
+    let x = {
+        let a = 1;
+        let b = 2;
+        a + b
+    };
 }
 "#####,
     )

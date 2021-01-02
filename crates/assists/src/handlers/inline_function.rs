@@ -1,8 +1,7 @@
-use std::fmt::Write as _;
-
+use ast::make;
 use hir::{HasSource, HasVisibility, ModuleDef, PathResolution};
 use syntax::{
-    ast::{self, ArgListOwner},
+    ast::{self, edit::AstNodeEdit, ArgListOwner},
     AstNode,
 };
 
@@ -25,7 +24,11 @@ use crate::{
 // ```
 // fn add(a: u32, b: u32) -> u32 { a + b }
 // fn main() {
-//     let x = { let a = 1; let b = 2; a + b };
+//     let x = {
+//         let a = 1;
+//         let b = 2;
+//         a + b
+//     };
 // }
 // ```
 pub(crate) fn inline_function(acc: &mut Assists, ctx: &AssistContext) -> Option<()> {
@@ -65,18 +68,18 @@ pub(crate) fn inline_function(acc: &mut Assists, ctx: &AssistContext) -> Option<
         format!("Inline `{}`", path),
         target,
         |builder| {
-            let mut buffer = String::new();
-
-            writeln!(buffer, "{{").expect("never fails");
+            let mut statements: Vec<ast::Stmt> = Vec::new();
 
             for (pattern, value) in new_bindings {
-                writeln!(buffer, "let {} = {};", pattern, value).expect("never fails");
+                statements.push(make::let_stmt(pattern, Some(value)).into());
             }
 
-            writeln!(buffer, "{}", body).expect("never fails");
-            buffer.push_str("}");
+            let original_indentation = call.indent_level();
+            let replacement = make::block_expr(statements, Some(body.clone()))
+                .reset_indent()
+                .indent(original_indentation);
 
-            builder.replace(target, buffer);
+            builder.replace_ast(ast::Expr::CallExpr(call), ast::Expr::BlockExpr(replacement));
         },
     )
 }
