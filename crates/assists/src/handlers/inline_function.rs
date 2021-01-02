@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Write as _};
+use std::fmt::Write as _;
 
 use hir::{HasSource, HasVisibility, ModuleDef, PathResolution};
 use syntax::{
@@ -67,14 +67,14 @@ pub(crate) fn inline_function(acc: &mut Assists, ctx: &AssistContext) -> Option<
         |builder| {
             let mut buffer = String::new();
 
-            buffer.push_str("{ ");
+            writeln!(buffer, "{{").expect("never fails");
 
             for (pattern, value) in new_bindings {
                 writeln!(buffer, "let {} = {};", pattern, value).expect("never fails");
             }
 
             writeln!(buffer, "{}", body).expect("never fails");
-            buffer.push_str(" }");
+            buffer.push_str("}");
 
             builder.replace(target, buffer);
         },
