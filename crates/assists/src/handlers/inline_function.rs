@@ -50,7 +50,7 @@ pub(crate) fn inline_function(acc: &mut Assists, ctx: &AssistContext) -> Option<
     }
 
     let function_source = function.source(ctx.db());
-    let body = function_source.value.body()?.expr()?;
+    let body = function_source.value.body()?;
     let target = call.syntax().text_range();
 
     let arguments: Vec<_> = call.arg_list()?.args().collect();
@@ -74,8 +74,10 @@ pub(crate) fn inline_function(acc: &mut Assists, ctx: &AssistContext) -> Option<
                 statements.push(make::let_stmt(pattern, Some(value)).into());
             }
 
+            statements.extend(body.statements());
+
             let original_indentation = call.indent_level();
-            let replacement = make::block_expr(statements, Some(body.clone()))
+            let replacement = make::block_expr(statements, body.expr())
                 .reset_indent()
                 .indent(original_indentation);
 
@@ -93,4 +95,135 @@ fn function_parameter_patterns(value: &ast::Fn) -> Option<Vec<ast::Pat>> {
     }
 
     Some(patterns)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::{check_assist, check_assist_not_applicable};
+
+    use super::*;
+
+    #[test]
+    fn no_args_or_return_value_gets_inlined_without_block() {
+        check_assist(
+            inline_function,
+            r#"
+            fn foo() { println!("Hello, World!"); }
+            fn main() {
+                fo<|>o();
+            }
+            "#,
+            r#"
+            fn foo() { println!("Hello, World!"); }
+            fn main() {
+                {
+                    println!("Hello, World!");
+                };
+            }
+            "#,
+        );
+    }
+
+    #[test]
+    fn args_with_side_effects() {
+        check_assist(
+            inline_function,
+            r#"
+            fn foo(name: String) { println!("Hello, {}!", name); }
+            fn main() {
+                foo<|>(String::from("Michael"));
+            }
+            "#,
+            r#"
+            fn foo(name: String) { println!("Hello, {}!", name); }
+            fn main() {
+                {
+                    let name = String::from("Michael");
+                    println!("Hello, {}!", name);
+                };
+            }
+            "#,
+        );
+    }
+
+    #[test]
+    #[ignore = "not implemented"]
+    fn copy_args_with_no_side_effects_get_inlined() {
+        check_assist(
+            inline_function,
+            r#"
+            fn add(a: u32, b: u32) -> u32 { a + b }
+            fn main() {
+                let x = add<|>(1, 2);
+            }
+            "#,
+            r#"
+            fn add(a: u32, b: u32) -> u32 { a + b }
+            fn main() {
+                let x = 1 + 2;
+            }
+            "#,
+        );
+    }
+
+    #[test]
+    fn cant_inline_when_the_function_is_inaccessible() {
+        check_assist_not_applicable(
+            inline_function,
+            r#"
+            mod private {
+                fn add(a: u32, b: u32) -> u32 { a + b }
+            }
+            fn main() { let x = private::add<|>(1, 2); }
+            "#,
+        );
+    }
+
+    #[test]
+    fn method_inlining_isnt_supported() {
+        check_assist_not_applicable(
+            inline_function,
+            r"
+            struct Foo;
+            impl Foo { fn bar(&self) {} }
+
+            fn main() { Foo.bar<|>(); }
+            ",
+        );
+    }
+
+    #[test]
+    fn function_with_multiple_statements() {
+        check_assist(
+            inline_function,
+            r#"
+            fn foo(a: u32, b: u32) -> u32 {
+                let x = a + b;
+                let y = x - b;
+                x * y
+            }
+
+            fn main() {
+                let x = foo<|>(1, 2);
+            }
+            "#,
+            r#"
+            fn foo(a: u32, b: u32) -> u32 {
+                let x = a + b;
+                let y = x - b;
+                x * y
+            }
+
+            fn main() {
+                let x = {
+                    let a = 1;
+                    let b = 2;
+                    let x = a + b;
+                    let y = x - b;
+                    x * y
+                };
+            }
+            "#,
+        );
+    }
 }
