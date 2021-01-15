@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["map","A map from arena IDs to some other type. Space requirement is O(highest ID)."]],"struct":[["Arena","Yet another ID-based arena."],["Idx","The ID of a value allocated in an arena that holds `T`s."],["RawId","The raw ID of a value in an arena."]]});
